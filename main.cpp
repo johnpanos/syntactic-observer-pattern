@@ -29,11 +29,31 @@ struct ObservableProperty
         this->value = new_value;
     }
 
+    /**
+     * @brief Observer will be called in the event that the backing value changes
+     *
+     * @param observer Lambda to be called
+     */
     void add_observer(std::function<void(T, T)> observer)
     {
         this->observers.push_back(observer);
     }
 };
+
+class AnimationCore
+{
+public:
+    static int64_t now()
+    {
+        return duration_cast<milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+};
+
+template <typename T>
+T lerp(T start, T end, double prog)
+{
+    return (T)start + (prog * (end - start));
+}
 
 template <typename T>
 class Animation
@@ -43,18 +63,29 @@ private:
     int64_t end_time;
 
 public:
+    /**
+     * @brief Sets up private variables for animation
+     *
+     */
     void prep()
     {
-        auto millisec_since_epoch = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-        this->start_time = millisec_since_epoch;
-        this->end_time = millisec_since_epoch + this->duration;
+        int64_t now = AnimationCore::now();
+        this->start_time = now;
+        this->end_time = now + this->duration;
     }
+
     ObservableProperty<T> *property;
     T start;
     T end;
 
     int64_t duration;
 
+    /**
+     * @brief Get the progress object
+     *
+     * @param now Timestamp in milliseconds representing the current time
+     * @return float Normalized range between 0.0 and 1.0 representing animation progress
+     */
     float get_progress(int64_t now)
     {
         int64_t delta = now - this->start_time;
@@ -64,8 +95,36 @@ public:
             return 0.0f;
         }
 
-        double dt = (double)delta / (double)this->duration;
+        float dt = (float)((double)delta / (double)this->duration);
         return dt;
+    }
+
+    T get_value_for_progress(float prog)
+    {
+        return lerp(this->start, this->end, prog);
+    }
+
+    void tick(int64_t now)
+    {
+        float prog = this->get_progress(now);
+
+        if (prog > 1)
+        {
+            this->property->value = this->end;
+        }
+        else if (prog < 0)
+        {
+            this->property->value = this->start;
+        }
+        else
+        {
+            this->property->value = this->get_value_for_progress(prog);
+        }
+    }
+
+    bool finished(int64_t now)
+    {
+        return this->get_progress(now) >= 1.0;
     }
 };
 
@@ -117,19 +176,11 @@ public:
     }
 };
 
-double lerp(double a, double b, double t)
-{
-    return a + (t * (b - a));
-}
-
 int main()
 {
     View *my_view = new View();
-    my_view->frame.size.width = 420.10;
-    my_view->frame.size.height = 123.123;
-    my_view->frame.size.height = 234.234;
 
-    std::cout << "height: " << my_view->frame.size.height.value << "\n";
+    std::cout << "width: " << my_view->frame.size.width.value << "\n";
 
     auto observe = [&my_view](int old, int current)
     {
@@ -144,28 +195,15 @@ int main()
 
         anim.prep();
 
-        float prog = 0;
-        do
+        int64_t now = AnimationCore::now();
+
+        while (!anim.finished(now))
         {
-            // TODO: Make this use steady_clock
-            int64_t now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-            prog = anim.get_progress(now);
-
-            if (prog > 1)
-            {
-                anim.property->value = anim.end;
-            }
-            else
-            {
-                anim.property->value = (int)(lerp((double)anim.start, (double)anim.end, prog));
-            }
-
+            now = AnimationCore::now();
+            anim.tick(now);
             std::cout << "value: " << anim.property->value << "\n";
-        } while (prog < 1);
+        }
     };
     my_view->color.r.add_observer(observe);
-
-    std::cout << "red: " << my_view->color.r.value << "\n";
-    my_view->color.r = 255;
-    my_view->color.r = 0;
+    my_view->color.r = 120;
 }
