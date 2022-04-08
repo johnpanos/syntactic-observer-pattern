@@ -17,7 +17,7 @@ template <typename T>
 struct ObservableProperty
 {
     T value;
-    std::vector<std::function<void(T, T)>> observers;
+    std::vector<std::function<void(T, T)> > observers;
 
     inline void
     operator=(const T new_value)
@@ -49,6 +49,15 @@ public:
     }
 };
 
+/**
+ * @brief Abstract linear interpolation
+ *
+ * @tparam T
+ * @param start
+ * @param end
+ * @param prog
+ * @return T
+ */
 template <typename T>
 T lerp(T start, T end, double prog)
 {
@@ -64,7 +73,7 @@ private:
 
 public:
     /**
-     * @brief Sets up private variables for animation
+     * @brief Sets up start and end times for an animation
      *
      */
     void prep()
@@ -99,11 +108,22 @@ public:
         return dt;
     }
 
+    /**
+     * @brief Returns value of an
+     *
+     * @param prog Normalized range between 0.0 and 1.0 representing animation progress
+     * @return T Whatever the value is. For example, float, int, or Color
+     */
     T get_value_for_progress(float prog)
     {
         return lerp(this->start, this->end, prog);
     }
 
+    /**
+     * @brief Progresses the animation given the current timestamp
+     *
+     * @param now Time in ms that has elapsed since the steady_clock epoch
+     */
     void tick(int64_t now)
     {
         float prog = this->get_progress(now);
@@ -122,6 +142,13 @@ public:
         }
     }
 
+    /**
+     * @brief
+     *
+     * @param now Time in ms that has elapsed since the steady_clock epoch
+     * @return true The animation has finished
+     * @return false The animation is in progress
+     */
     bool finished(int64_t now)
     {
         return this->get_progress(now) >= 1.0;
@@ -178,32 +205,45 @@ public:
 
 int main()
 {
+    // Example view
     View *my_view = new View();
 
-    std::cout << "width: " << my_view->frame.size.width.value << "\n";
-
-    auto observe = [&my_view](int old, int current)
+    // Animate function observer when value is changed
+    auto observe = [&my_view](float old, float current)
     {
-        Animation<int> anim;
-        anim.property = &my_view->color.r;
+        // Create new animation for the current property
+        Animation<float> anim;
+        anim.property = &my_view->frame.size.width;
         anim.start = old;
         anim.end = current;
-        anim.duration = 1000;
+        anim.duration = 250; // ms
 
+        // Print start and end values
         std::cout << "start: " << anim.start;
         std::cout << " | end: " << anim.end << "\n";
 
+        // Setup start and end times for the animation
         anim.prep();
 
         int64_t now = AnimationCore::now();
 
+        // Run animation until it's complete
         while (!anim.finished(now))
         {
+            // Tick using the delta from the relative steady_clock epoch
             now = AnimationCore::now();
             anim.tick(now);
-            std::cout << "value: " << anim.property->value << "\n";
+
+            std::cout << "Current value: " << anim.property->value << "\n";
+
+            // Update at 120hz
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 120));
         }
     };
-    my_view->color.r.add_observer(observe);
-    my_view->color.r = 120;
+
+    // Add observer function to be called on width change
+    my_view->frame.size.width.add_observer(observe);
+
+    // Observer function will be called on assignment
+    my_view->frame.size.width = 500.64f;
 }
